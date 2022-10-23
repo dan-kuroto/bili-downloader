@@ -27,7 +27,7 @@ from bilibili_api import video, Credential, HEADERS
 
 
 # 分片下载用的参数
-PIECE = 4 * 1024  # 分片下载的大小的初始值，程序会根据实际情况自动进行动态调整。但初始值对最终的平均下载速度有影响，但也并不是越大越好，初始值太大会导致多次重传，而这会极大地拖慢速度，要实际情况调整，根据我的经验一般8*1024最好，下载效果不好就再缩小一点
+PIECE = 1 * 1024  # 分片下载的大小的初始值，程序会根据实际情况自动进行动态调整。但初始值对最终的平均下载速度有影响，但也并不是越大越好，初始值太大会导致多次重传，而这会极大地拖慢速度，要实际情况调整，根据我的经验一般8*1024最好，下载效果不好就再缩小一点
 SUCCESS_REPEAT = 0  # 仅当重复成功时才允许加快下载速度，而且保险起见必须一次过
 # cookie，加上能让你下载1080p以上分辨率，但用多了很危险，而且需要定期更换
 SESSDATA = ''
@@ -257,11 +257,17 @@ class DownloadThread(QThread):
         try:
             url = await self.video.get_download_url(0)
             async with aiohttp.ClientSession() as sess:
+                # create tasks
+                download_tasks = []  # 不敢在分片的地方异步，但音视频相对独立，就没问题了
                 for mode in ['video', 'audio']:  # 音视频下载的代码长得差不多还重写两遍也太浪费了
                     if os.path.exists(f'{mode}_temp.m4s'):
                         os.remove(f"{mode}_temp.m4s")
                     download_url = url["dash"][mode][0]['baseUrl']
-                    await self.download_media(sess, download_url, mode)
+                    download_tasks.append(
+                        asyncio.create_task(self.download_media(sess, download_url, mode))
+                    )
+                # download video&audio asynchronously
+                await asyncio.wait(download_tasks)
             self.downloaded.emit()
         except Exception as e:
             self.error_msg.emit(repr(e))
