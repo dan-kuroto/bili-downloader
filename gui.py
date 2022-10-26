@@ -19,7 +19,7 @@ import subprocess
 import sys
 from typing import Tuple
 
-from PySide2.QtWidgets import QApplication, QWidget, QLineEdit, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QProgressBar, QMessageBox, QTextEdit
+from PySide2.QtWidgets import QApplication, QWidget, QLineEdit, QLabel, QPushButton, QVBoxLayout, QProgressBar, QMessageBox, QTextEdit
 from PySide2.QtGui import QFont
 from PySide2.QtCore import QThread, Signal
 from qtmodern.styles import dark as dark_style
@@ -70,9 +70,9 @@ def retry(num: int):
                         speed_up()
                 except Exception as e:
                     if i < num:  # [0, num)
-                        window.logger_text.append(f'遇到错误 {repr(e)}，开始第 {i+1} 次重试……')
+                        window.log_text.append(f'遇到错误 {repr(e)}，开始第 {i+1} 次重试……')
                     else:  # i == num
-                        window.logger_text.append(f'遇到错误 {repr(e)}，重试次数（{num}）已耗尽！')
+                        window.log_text.append(f'遇到错误 {repr(e)}，重试次数（{num}）已耗尽！')
                     # 调整下载速度：失败1次，当前设定下载速度凌驾于网速，急需减缓
                     speed_down()
                 else:
@@ -319,8 +319,8 @@ class Window(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('B站下载器')
-        self.setMinimumSize(1000, 375)
-        self.resize(1000, 375)
+        self.setMinimumSize(600, 450)
+        self.resize(600, 450)
 
         self.bvid_edit = QLineEdit()
         self.bvid_edit.setPlaceholderText('在这里输入BV号然后回车')
@@ -336,9 +336,10 @@ class Window(QWidget):
         self.audio_bar = QProgressBar()
         self.mix_btn = QPushButton('混流（依赖ffmpeg）')
         self.mix_btn.clicked.connect(self.mix)
-        self.logger_text = QTextEdit()
-        self.logger_text.setReadOnly(True)
-        self.logger_text.setFont(QFont('Microsoft YaHei', 11))
+        self.log_text = QTextEdit()
+        self.log_text.setPlaceholderText('日志 ...')
+        self.log_text.setReadOnly(True)
+        self.log_text.setFont(QFont('Microsoft YaHei', 11))
 
         self.data = Data(self)
         self.data.owner = ''
@@ -362,15 +363,12 @@ class Window(QWidget):
         self.download_thread.audio_all.connect(self.set_audio_all)
         self.download_thread.error_msg.connect(lambda msg: QMessageBox.warning(self, '下载失败！', msg))
         self.mix_thread = MixThread()
-        self.mix_thread.msg.connect(lambda msg: self.logger_text.append(msg))
+        self.mix_thread.msg.connect(lambda msg: self.log_text.append(msg))
         self.mix_thread.end.connect(lambda: self.mix_btn.setEnabled(True))
 
-        layout_left = QVBoxLayout()
-        for widget in [self.bvid_edit, self.title_label, self.owner_label, self.download_btn, self.video_bar, self.audio_bar, self.mix_btn]:
-            layout_left.addWidget(widget)
-        layout = QHBoxLayout()
-        layout.addLayout(layout_left)
-        layout.addWidget(self.logger_text)
+        layout = QVBoxLayout()
+        for widget in [self.bvid_edit, self.title_label, self.owner_label, self.download_btn, self.video_bar, self.audio_bar, self.mix_btn, self.log_text]:
+            layout.addWidget(widget)
         self.setLayout(layout)
 
     def enter_handler(self):
