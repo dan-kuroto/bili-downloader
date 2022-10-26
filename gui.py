@@ -19,9 +19,9 @@ import subprocess
 import sys
 from typing import Tuple
 
-from PySide2.QtWidgets import QApplication, QWidget, QLineEdit, QLabel, QPushButton, QVBoxLayout, QProgressBar, QMessageBox, QTextEdit
+from PySide2.QtWidgets import QApplication, QWidget, QLineEdit, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QFormLayout, QProgressBar, QMessageBox, QTextEdit, QMenu
 from PySide2.QtGui import QFont
-from PySide2.QtCore import QThread, Signal
+from PySide2.QtCore import QThread, Signal, Qt, QPoint
 from qtmodern.styles import dark as dark_style
 from bilibili_api import video, Credential, HEADERS
 
@@ -29,10 +29,6 @@ from bilibili_api import video, Credential, HEADERS
 # 分片下载用的参数
 PIECE = 1 * 1024  # 分片下载的大小的初始值，程序会根据实际情况自动进行动态调整。但初始值对最终的平均下载速度有影响，但也并不是越大越好，初始值太大会导致多次重传，而这会极大地拖慢速度，要实际情况调整，根据我的经验一般8*1024最好，下载效果不好就再缩小一点
 SUCCESS_REPEAT = 0  # 仅当重复成功时才允许加快下载速度，而且保险起见必须一次过
-# cookie，加上能让你下载1080p以上分辨率，但用多了很危险，而且需要定期更换
-SESSDATA = ''
-BILI_JCT = ''
-BUVID3 = ''
 
 
 def speed_up():
@@ -99,6 +95,34 @@ class Data:
         self._video_all = 0
         self._audio_done = 0
         self._audio_all = 0
+        # cookie，加上能让你下载1080p以上分辨率，但用多了很危险，而且需要定期更换
+        self._sessdata = ''
+        self._bili_jct = ''
+        self._buvid3 = ''
+
+    @property
+    def sessdata(self) -> str:
+        return self._sessdata
+
+    @sessdata.setter
+    def sessdata(self, sessdata: str):
+        self._sessdata = sessdata
+
+    @property
+    def bili_jct(self) -> str:
+        return self._bili_jct
+
+    @bili_jct.setter
+    def bili_jct(self, bili_jct: str):
+        self._bili_jct = bili_jct
+
+    @property
+    def buvid3(self) -> str:
+        return self._buvid3
+
+    @buvid3.setter
+    def buvid3(self, buvid3: str):
+        self._buvid3 = buvid3
 
     @property
     def bvid(self) -> str:
@@ -315,6 +339,47 @@ class MixThread(QThread):
         self.end.emit()
 
 
+class CookieSetting(QWidget):
+    def __init__(self, main: 'Window'):
+        super().__init__()
+        self.main = main
+        self.setWindowTitle('设置Cookie')
+        self.sessdata_label = QLabel('SESSDATA')
+        self.sessdata_text = QLineEdit()
+        self.bili_jct_label = QLabel('bili_jct')
+        self.bili_jct_text = QLineEdit()
+        self.buvid3_label = QLabel('buvid3')
+        self.buvid3_text = QLineEdit()
+        self.submit_btn = QPushButton('确认')
+        self.submit_btn.clicked.connect(self.submit)
+        self.cancel_btn = QPushButton('取消')
+        self.cancel_btn.clicked.connect(self.cancel)
+        layout = QVBoxLayout()
+        form_box = QFormLayout()
+        form_box.addRow(self.sessdata_label, self.sessdata_text)
+        form_box.addRow(self.bili_jct_label, self.bili_jct_text)
+        form_box.addRow(self.buvid3_label, self.buvid3_text)
+        layout.addLayout(form_box)
+        bottom_box = QHBoxLayout()
+        bottom_box.addWidget(self.submit_btn)
+        bottom_box.addWidget(self.cancel_btn)
+        layout.addLayout(bottom_box)
+        self.setLayout(layout)
+
+    def cancel(self):
+        self.sessdata_text.setText(self.main.data.sessdata)
+        self.bili_jct_text.setText(self.main.data.bili_jct)
+        self.buvid3_text.setText(self.main.data.buvid3)
+        self.hide()
+
+    def submit(self):
+        self.main.data.sessdata = self.sessdata_text.text()
+        self.main.data.bili_jct = self.bili_jct_text.text()
+        self.main.data.buvid3 = self.buvid3_text.text()
+        self.main.credential = Credential(sessdata=self.main.data.sessdata, bili_jct=self.main.data.bili_jct, buvid3=self.main.data.buvid3)
+        self.hide()
+
+
 class Window(QWidget):
     def __init__(self):
         super().__init__()
@@ -329,9 +394,15 @@ class Window(QWidget):
         self.title_label.setWordWrap(True)
         self.owner_label = QLabel()
         self.owner_label.setWordWrap(True)
+        self.cookie_setting = CookieSetting(self)
+        self.advanced_setting_menu = QMenu(self)
+        self.cookie_setting_action = self.advanced_setting_menu.addAction('设置cookie')
+        self.cookie_setting_action.triggered.connect(self.cookie_setting.show)
         self.download_btn = QPushButton()
         self.download_btn.setEnabled(False)
         self.download_btn.clicked.connect(self.download_btn_handler)
+        self.download_btn.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.download_btn.customContextMenuRequested.connect(self.show_advanced_setting_menu)
         self.video_bar = QProgressBar()
         self.audio_bar = QProgressBar()
         self.mix_btn = QPushButton('混流（依赖ffmpeg）')
@@ -349,7 +420,7 @@ class Window(QWidget):
         self.data.video_all = 0
         self.data.audio_done = 0
         self.data.audio_all = 0
-        self.credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
+        self.credential = Credential(sessdata=self.data.sessdata, bili_jct=self.data.bili_jct, buvid3=self.data.buvid3)
         self.video: video.Video = None
 
         self.get_info_thread = GetInfoThread()
@@ -370,6 +441,9 @@ class Window(QWidget):
         for widget in [self.bvid_edit, self.title_label, self.owner_label, self.download_btn, self.video_bar, self.audio_bar, self.mix_btn, self.log_text]:
             layout.addWidget(widget)
         self.setLayout(layout)
+
+    def show_advanced_setting_menu(self, pos: QPoint):
+        self.advanced_setting_menu.exec_(self.pos() + self.download_btn.pos() + pos)
 
     def enter_handler(self):
         """get info"""
@@ -426,7 +500,7 @@ class Window(QWidget):
             os.remove(path)
 
         self.mix_thread.path = path
-        self.mix_thread.cmd = f'ffmpeg -i video_temp.m4s -i audio_temp.m4s -vcodec copy -acodec copy "{self.data.owner}/{self.data.title} - {self.data.bvid}.mp4"'
+        self.mix_thread.cmd = f'ffmpeg -i video_temp.m4s -i audio_temp.m4s -vcodec copy -acodec copy "{Data.remove_banned_chars(self.data.owner)}/{Data.remove_banned_chars(self.data.title)} - {self.data.bvid}.mp4"'
         self.mix_btn.setEnabled(False)
         self.mix_thread.start()
 
