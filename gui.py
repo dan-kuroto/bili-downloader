@@ -19,9 +19,9 @@ import subprocess
 import sys
 from typing import Tuple
 
-from PySide2.QtWidgets import QApplication, QWidget, QLineEdit, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QFormLayout, QProgressBar, QMessageBox, QTextEdit, QMenu
+from PySide2.QtWidgets import QApplication, QWidget, QLineEdit, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QFormLayout, QProgressBar, QMessageBox, QTextEdit
 from PySide2.QtGui import QFont
-from PySide2.QtCore import QThread, Signal, Qt, QPoint
+from PySide2.QtCore import QThread, Signal
 from qtmodern.styles import dark as dark_style
 from bilibili_api import video, Credential, HEADERS
 
@@ -339,11 +339,11 @@ class MixThread(QThread):
         self.end.emit()
 
 
-class CookieSetting(QWidget):
+class SettingWindow(QWidget):
     def __init__(self, main: 'Window'):
         super().__init__()
         self.main = main
-        self.setWindowTitle('设置Cookie')
+        self.setWindowTitle('设置')
         self.sessdata_label = QLabel('SESSDATA')
         self.sessdata_text = QLineEdit()
         self.bili_jct_label = QLabel('bili_jct')
@@ -394,19 +394,17 @@ class Window(QWidget):
         self.title_label.setWordWrap(True)
         self.owner_label = QLabel()
         self.owner_label.setWordWrap(True)
-        self.cookie_setting = CookieSetting(self)
-        self.advanced_setting_menu = QMenu(self)
-        self.cookie_setting_action = self.advanced_setting_menu.addAction('设置cookie')
-        self.cookie_setting_action.triggered.connect(self.cookie_setting.show)
+        self.setting_window = SettingWindow(self)
         self.download_btn = QPushButton()
         self.download_btn.setEnabled(False)
         self.download_btn.clicked.connect(self.download_btn_handler)
-        self.download_btn.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.download_btn.customContextMenuRequested.connect(self.show_advanced_setting_menu)
         self.video_bar = QProgressBar()
         self.audio_bar = QProgressBar()
-        self.mix_btn = QPushButton('混流（依赖ffmpeg）')
+        self.mix_btn = QPushButton('混流')
+        self.mix_btn.setToolTip('*依赖ffmpeg')
         self.mix_btn.clicked.connect(self.mix)
+        self.setting_btn = QPushButton('设置')
+        self.setting_btn.clicked.connect(self.setting_window.show)
         self.log_text = QTextEdit()
         self.log_text.setPlaceholderText('日志 ...')
         self.log_text.setReadOnly(True)
@@ -438,12 +436,16 @@ class Window(QWidget):
         self.mix_thread.end.connect(lambda: self.mix_btn.setEnabled(True))
 
         layout = QVBoxLayout()
-        for widget in [self.bvid_edit, self.title_label, self.owner_label, self.download_btn, self.video_bar, self.audio_bar, self.mix_btn, self.log_text]:
+        for widget in [self.bvid_edit, self.title_label, self.owner_label]:
             layout.addWidget(widget)
+        layout.addWidget(self.download_btn)
+        for widgets in [[self.video_bar, self.setting_btn], [self.audio_bar, self.mix_btn]]:
+            hbox = QHBoxLayout()
+            for widget in widgets:
+                hbox.addWidget(widget)
+            layout.addLayout(hbox)
+        layout.addWidget(self.log_text)
         self.setLayout(layout)
-
-    def show_advanced_setting_menu(self, pos: QPoint):
-        self.advanced_setting_menu.exec_(self.pos() + self.download_btn.pos() + pos)
 
     def enter_handler(self):
         """get info"""
