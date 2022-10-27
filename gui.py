@@ -495,14 +495,16 @@ class Window(QWidget):
         if not self.data.bvid or not self.data.owner or not self.data.title:
             QMessageBox.warning(self, '错误！', '你不先根据BV号查一下视频信息的话，可没法确定下载的文件名哦~')
             return
-        if not os.path.exists(self.data.owner):
-            os.mkdir(self.data.owner)
-        path = f'{self.data.owner}/{self.data.title} - {self.data.bvid}.mp4'
+        owner = Data.remove_banned_chars(self.data.owner)
+        if not os.path.exists(owner):
+            os.mkdir(owner)
+        path = f'{owner}/{Data.remove_banned_chars(self.data.title)} - {self.data.bvid}.mp4'
         if os.path.exists(path):
-            os.remove(path)
+            self.log_text.append(f'目标文件已存在，安全起见，请先自行检查这个路径，确认是否需要重新混流，并删除原文件：{os.path.abspath(path)}')
+            return
 
         self.mix_thread.path = path
-        self.mix_thread.cmd = f'ffmpeg -i video_temp.m4s -i audio_temp.m4s -vcodec copy -acodec copy "{Data.remove_banned_chars(self.data.owner)}/{Data.remove_banned_chars(self.data.title)} - {self.data.bvid}.mp4"'
+        self.mix_thread.cmd = f'ffmpeg -i video_temp.m4s -i audio_temp.m4s -vcodec copy -acodec copy "{path}"'
         self.mix_btn.setEnabled(False)
         self.mix_thread.start()
 
