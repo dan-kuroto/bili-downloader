@@ -2,7 +2,6 @@ import aiohttp
 import asyncio
 from copy import deepcopy
 import os
-import subprocess
 import sys
 from typing import Tuple
 
@@ -303,27 +302,25 @@ class MixThread(QThread):
         self.cmd = 'ping www.bilibili.com'  # for test
         self.path = ''
 
-    def run(self):
-        process = subprocess.Popen(
+    async def _main(self):
+        process = await asyncio.subprocess.create_subprocess_shell(
             self.cmd,
-            shell=True,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            encoding='gbk',
-            text=True
+            stderr=asyncio.subprocess.PIPE,
         )
-        self.msg.emit('开始混流……')
-        while process.poll() is None:
-            msg = process.stdout.readline()
-            if msg:
-                self.msg.emit(msg)
-        if process.poll() != 0:
-            msg = process.stderr.read()
-            if msg:
-                self.msg.emit(msg)
-        self.msg.emit(f'混流结束！由于ffmpeg输出信息无法重定向到此处，请自行检查此路径：\n{os.path.abspath(self.path)}')
+        self.msg.emit('开始混流，请稍等片刻……')  # process没找到非阻塞检测终止状态的方法，所以还是不能实时
+        if process.stderr is None:
+            raise RuntimeError()
+        code = await process.wait()
+        self.msg.emit((await process.stderr.read()).decode('utf-8', errors='ignore'))
+        self.msg.emit(f'退出代码为 {code}')
         self.end.emit()
+
+    def run(self):
+        try:
+            asyncio.get_event_loop()
+        except RuntimeError:  # 不知道为什么，这里不能用new_event_loop，否则后面会报错NotImplementedError，明明我另一个项目里可以的啊……
+            asyncio.set_event_loop(asyncio.ProactorEventLoop())
+        asyncio.get_event_loop().run_until_complete(self._main())
 
 
 class SettingWindow(QWidget):
