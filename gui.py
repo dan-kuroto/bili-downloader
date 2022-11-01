@@ -305,14 +305,16 @@ class MixThread(QThread):
     async def _main(self):
         process = await asyncio.subprocess.create_subprocess_shell(
             self.cmd,
-            stderr=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,  # 注意，ffmpeg所有输出都在stderr里，所以之前用stdout才获取不到输出
         )
-        self.msg.emit('开始混流，请稍等片刻……')  # process没找到非阻塞检测终止状态的方法，所以还是不能实时
+        self.msg.emit('开始混流，请稍等片刻……')
         if process.stderr is None:
             raise RuntimeError()
-        code = await process.wait()
-        self.msg.emit((await process.stderr.read()).decode('utf-8', errors='ignore'))
-        self.msg.emit(f'退出代码为 {code}')
+        while process.returncode is None:  # 用返回代码是否为None来判断子进程是否结束
+            data = await process.stderr.readline()
+            self.msg.emit(data.decode('utf-8', errors='ignore').strip())
+            await asyncio.sleep(0.01)  # 不知为什么这里不sleep就会出很奇怪的错误
+        self.msg.emit(f'退出代码为 {process.returncode}')
         self.end.emit()
 
     def run(self):
