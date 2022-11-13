@@ -75,6 +75,7 @@ class Data:
     def __init__(self, parent: 'Window'):
         self.parent = parent
         self._bvid = ''
+        self._pid = 0  # 分P号
         self._owner = ''
         self._title = ''
         self._video_done = 0
@@ -117,7 +118,15 @@ class Data:
     @bvid.setter
     def bvid(self, bvid: str):
         self._bvid = bvid
-        self.parent.download_btn.setText(f'下载 {bvid}' if bvid else '下载')
+        self.parent.download_btn.setText(f'下载 {bvid} p{self.pid + 1}' if bvid else '下载')
+
+    @property
+    def pid(self) -> int:
+        return self._pid
+
+    @pid.setter
+    def pid(self, pid: int):
+        self._pid = pid
 
     @property
     def owner(self) -> str:
@@ -265,7 +274,7 @@ class DownloadThread(QThread):
 
     async def download(self):
         try:
-            url = await self.video.get_download_url(0)
+            url = await self.video.get_download_url(window.data.pid)
             async with aiohttp.ClientSession() as sess:
                 # create tasks
                 download_tasks = []  # 不敢在分片的地方异步，但音视频相对独立，就没问题了
@@ -374,7 +383,7 @@ class Window(QWidget):
         self.resize(600, 450)
 
         self.bvid_edit = QLineEdit()
-        self.bvid_edit.setPlaceholderText('在这里输入BV号然后回车')
+        self.bvid_edit.setPlaceholderText('输入BV号后回车，要指定分p号就空格加在后面')
         self.bvid_edit.returnPressed.connect(self.enter_handler)
         self.title_label = QLabel()
         self.title_label.setWordWrap(True)
@@ -435,10 +444,25 @@ class Window(QWidget):
 
     def enter_handler(self):
         """get info"""
-        if not self.bvid_edit.text():
+        bvid = self.bvid_edit.text()
+        if not bvid:
             return
         try:
-            self.video = video.Video(bvid=self.bvid_edit.text(), credential=self.credential)
+            words = bvid.split(' ')
+            if len(words) == 1:  # 形如f'{BVID}', 无需多操作，只需分P设为0
+                self.data.pid = 0
+            elif len(words) == 2:  # 形如f'{BVID} p{PID}'或f'{BVID} P{PID}'或f'{BVID} {PID}'
+                bvid = words[0]
+                try:
+                    if words[1].lower().startswith('p'):
+                        self.data.pid = int(words[1][1:]) - 1
+                    else:
+                        self.data.pid = int(words[1]) - 1
+                except ValueError:
+                    raise ValueError('分P号必须为整数！')
+            else:  # 格式错误
+                raise ValueError('格式错误')
+            self.video = video.Video(bvid=bvid, credential=self.credential)
         except Exception as e:
             QMessageBox.warning(self, 'BV号错误！', repr(e))
             return
@@ -453,7 +477,7 @@ class Window(QWidget):
         if info:
             self.data.owner = info['owner']['name']
             self.data.title = info['title']
-            self.data.bvid = self.bvid_edit.text()
+            self.data.bvid = self.video.get_bvid()
             self.download_btn.setEnabled(True)  # 若成功才能允许下载
         self.bvid_edit.setEnabled(True)
 
@@ -484,7 +508,10 @@ class Window(QWidget):
         owner = Data.remove_banned_chars(self.data.owner)
         if not os.path.exists(owner):
             os.mkdir(owner)
-        path = f'{owner}/{Data.remove_banned_chars(self.data.title)} - {self.data.bvid}.mp4'
+        if self.data.pid == 0:  # 单P, 或多P中的第一P, 我懒得判断是否多P了
+            path = f'{owner}/{Data.remove_banned_chars(self.data.title)} - {self.data.bvid}.mp4'
+        else:
+            path = f'{owner}/{Data.remove_banned_chars(self.data.title)} - {self.data.bvid} - p{self.data.pid + 1}.mp4'
         if os.path.exists(path):
             self.log_text.append(f'目标文件已存在，安全起见，请先自行检查这个路径，确认是否需要重新混流，并删除原文件：{os.path.abspath(path)}')
             return
