@@ -509,9 +509,9 @@ class Window(QWidget):
         if not os.path.exists(owner):
             os.mkdir(owner)
         if self.data.pid == 0:  # 单P, 或多P中的第一P, 我懒得判断是否多P了
-            path = f'{owner}/{Data.remove_banned_chars(self.data.title)} - {self.data.bvid}.mp4'
+            path = f'./{owner}/{Data.remove_banned_chars(self.data.title)} - {self.data.bvid}.mp4'
         else:
-            path = f'{owner}/{Data.remove_banned_chars(self.data.title)} - {self.data.bvid} - p{self.data.pid + 1}.mp4'
+            path = f'./{owner}/{Data.remove_banned_chars(self.data.title)} - {self.data.bvid} - p{self.data.pid + 1}.mp4'
         if os.path.exists(path):
             self.log_text.append(f'目标文件已存在，安全起见，请先自行检查这个路径，确认是否需要重新混流，并删除原文件：{os.path.abspath(path)}')
             return
