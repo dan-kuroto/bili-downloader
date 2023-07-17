@@ -291,6 +291,7 @@ class DownloadThread(QThread):
         except Exception as e:
             self.error_msg.emit(repr(e))
         finally:  # 不管下载成功失败，这个调整下载速度的系统都要重置一下
+            global PIECE, SUCCESS_REPEAT
             PIECE = 8 * 1024
             SUCCESS_REPEAT = 0
 
@@ -476,7 +477,10 @@ class Window(QWidget):
         """
         if info:
             self.data.owner = info['owner']['name']
-            self.data.title = info['title']
+            title = info['title']  # 视频本身的标题
+            if len(info['pages']) > 1:  # 有多个分P
+                title = f'{title} - p{self.data.pid + 1} {info["pages"][self.data.pid]["part"]}'
+            self.data.title = title
             self.data.bvid = self.video.get_bvid()
             self.download_btn.setEnabled(True)  # 若成功才能允许下载
         self.bvid_edit.setEnabled(True)
@@ -508,10 +512,7 @@ class Window(QWidget):
         owner = Data.remove_banned_chars(self.data.owner)
         if not os.path.exists(owner):
             os.mkdir(owner)
-        if self.data.pid == 0:  # 单P, 或多P中的第一P, 我懒得判断是否多P了
-            path = f'./{owner}/{Data.remove_banned_chars(self.data.title)} - {self.data.bvid}.mp4'
-        else:
-            path = f'./{owner}/{Data.remove_banned_chars(self.data.title)} - {self.data.bvid} - p{self.data.pid + 1}.mp4'
+        path = f'./{owner}/{self.data.bvid} - {Data.remove_banned_chars(self.data.title)}.mp4'
         if os.path.exists(path):
             self.log_text.append(f'目标文件已存在，安全起见，请先自行检查这个路径，确认是否需要重新混流，并删除原文件：{os.path.abspath(path)}')
             return
