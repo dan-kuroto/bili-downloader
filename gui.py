@@ -77,7 +77,10 @@ class Data:
         self._bvid = ''
         self._pid = 0  # 分P号
         self._owner = ''
-        self._title = ''
+        self._title = ''  # 界面上显示的标题
+        self._grand_title = ''  # 视频标题
+        self._sub_title = ''  # 分P标题
+        self._is_multi = False  # 是否是多P视频
         self._video_done = 0
         self._video_all = 0
         self._audio_done = 0
@@ -127,6 +130,30 @@ class Data:
     @pid.setter
     def pid(self, pid: int):
         self._pid = pid
+
+    @property
+    def grand_title(self) -> str:
+        return self._grand_title
+
+    @grand_title.setter
+    def grand_title(self, grand_title: str):
+        self._grand_title = grand_title
+
+    @property
+    def sub_title(self) -> str:
+        return self._sub_title
+
+    @sub_title.setter
+    def sub_title(self, sub_title: str):
+        self._sub_title = sub_title
+
+    @property
+    def is_multi(self) -> bool:
+        return self._is_multi
+
+    @is_multi.setter
+    def is_multi(self, is_multi: bool):
+        self._is_multi = is_multi
 
     @property
     def owner(self) -> str:
@@ -477,10 +504,13 @@ class Window(QWidget):
         """
         if info:
             self.data.owner = info['owner']['name']
-            title = info['title']  # 视频本身的标题
-            if len(info['pages']) > 1:  # 有多个分P
-                title = f'{title} - p{self.data.pid + 1} {info["pages"][self.data.pid]["part"]}'
-            self.data.title = title
+            self.data.is_multi = len(info['pages']) > 1
+            self.data.grand_title = info['title']
+            self.data.sub_title = info['pages'][self.data.pid]['part']
+            if self.data.is_multi:
+                self.data.title = f'{self.data.grand_title} - p{self.data.pid + 1} {self.data.sub_title}'
+            else:
+                self.data.title = self.data.grand_title  # 单P视频的大小标题是一样的
             self.data.bvid = self.video.get_bvid()
             self.download_btn.setEnabled(True)  # 若成功才能允许下载
         self.bvid_edit.setEnabled(True)
@@ -509,10 +539,14 @@ class Window(QWidget):
         if not self.data.bvid or not self.data.owner or not self.data.title:
             QMessageBox.warning(self, '错误！', '你不先根据BV号查一下视频信息的话，可没法确定下载的文件名哦~')
             return
-        owner = Data.remove_banned_chars(self.data.owner)
-        if not os.path.exists(owner):
-            os.mkdir(owner)
-        path = f'./{owner}/{self.data.bvid} - {Data.remove_banned_chars(self.data.title)}.mp4'
+        # path = f'./{owner}/{self.data.bvid} - {Data.remove_banned_chars(self.data.title)}.mp4'
+        dir = f'{Data.remove_banned_chars(self.data.owner)}/{self.data.bvid} - {Data.remove_banned_chars(self.data.grand_title)}'
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+        if self.data.is_multi:
+            path = f'{dir}/P{self.data.pid + 1} {Data.remove_banned_chars(self.data.sub_title)}.mp4'
+        else:
+            path = f'{dir}/{Data.remove_banned_chars(self.data.grand_title)}.mp4'
         if os.path.exists(path):
             self.log_text.append(f'目标文件已存在，安全起见，请先自行检查这个路径，确认是否需要重新混流，并删除原文件：{os.path.abspath(path)}')
             return
