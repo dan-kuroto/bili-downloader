@@ -1,5 +1,6 @@
 import aiohttp
 import asyncio
+import argparse
 from copy import deepcopy
 import os
 import sys
@@ -9,7 +10,7 @@ from PySide2.QtWidgets import QApplication, QWidget, QLineEdit, QLabel, QPushBut
 from PySide2.QtGui import QFont
 from PySide2.QtCore import QThread, Signal
 from qtmodern.styles import dark as dark_style
-from bilibili_api import video, Credential, HEADERS
+from bilibili_api import video, Credential, HEADERS, settings
 
 
 # 分片下载用的参数
@@ -268,7 +269,7 @@ class DownloadThread(QThread):
         """
         headers = deepcopy(HEADERS)
         headers['range'] = f'bytes={start}-{end}'
-        async with sess.get(url, headers=headers) as resp:
+        async with sess.get(url, headers=headers, proxy=args.proxy) as resp:
             bs = await resp.content.read()  # 就是要存内存里，直接写文件就不方便断点续传了
             return bs, int(resp.headers['Content-Range'].split('/')[-1])
 
@@ -558,6 +559,14 @@ class Window(QWidget):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Bilibili video downloader')
+    parser.add_argument('-p', '--proxy', type=str, help='Set the proxy for downloading')
+    args = parser.parse_args()
+
+    if args.proxy is not None:
+        print('use proxy:', args.proxy)
+        settings.proxy = args.proxy
+
     app = QApplication(sys.argv)
     dark_style(app)
     app.setFont(QFont('Microsoft YaHei', 15))
