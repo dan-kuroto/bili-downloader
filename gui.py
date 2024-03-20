@@ -545,9 +545,9 @@ class Window(QWidget):
         if not os.path.exists(dir):
             os.makedirs(dir)
         if self.data.is_multi:
-            path = f'{dir}/P{self.data.pid + 1} {Data.remove_banned_chars(self.data.sub_title)}.mp4'
+            path = f'./{dir}/P{self.data.pid + 1} {Data.remove_banned_chars(self.data.sub_title)}.mp4'
         else:
-            path = f'{dir}/{Data.remove_banned_chars(self.data.grand_title)}.mp4'
+            path = f'./{dir}/{Data.remove_banned_chars(self.data.grand_title)}.mp4'
         if os.path.exists(path):
             self.log_text.append(f'目标文件已存在，安全起见，请先自行检查这个路径，确认是否需要重新混流，并删除原文件：{os.path.abspath(path)}')
             return
