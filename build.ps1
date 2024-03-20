@@ -1,0 +1,1 @@
+pyinstaller -F -w -i bili.ico gui.py
