@@ -540,8 +540,7 @@ class Window(QWidget):
         if not self.data.bvid or not self.data.owner or not self.data.title:
             QMessageBox.warning(self, '错误！', '你不先根据BV号查一下视频信息的话，可没法确定下载的文件名哦~')
             return
-        # path = f'./{owner}/{self.data.bvid} - {Data.remove_banned_chars(self.data.title)}.mp4'
-        dir = f'{Data.remove_banned_chars(self.data.owner)}/{self.data.bvid} - {Data.remove_banned_chars(self.data.grand_title)}'
+        dir = f'downloads/{Data.remove_banned_chars(self.data.owner)}/{self.data.bvid} - {Data.remove_banned_chars(self.data.grand_title)}'
         if not os.path.exists(dir):
             os.makedirs(dir)
         if self.data.is_multi:
