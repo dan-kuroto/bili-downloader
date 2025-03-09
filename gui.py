@@ -6,7 +6,7 @@ import os
 import sys
 from typing import Tuple
 
-from PySide2.QtWidgets import QApplication, QWidget, QLineEdit, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QFormLayout, QProgressBar, QMessageBox, QTextEdit
+from PySide2.QtWidgets import QApplication, QWidget, QLineEdit, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QFormLayout, QProgressBar, QMessageBox, QTextEdit, QCheckBox
 from PySide2.QtGui import QFont
 from PySide2.QtCore import QThread, Signal
 from qtmodern.styles import dark as dark_style
@@ -82,6 +82,7 @@ class Data:
         self._grand_title = ''  # 视频标题
         self._sub_title = ''  # 分P标题
         self._is_multi = False  # 是否是多P视频
+        self._cover_url = ''
         self._video_done = 0
         self._video_all = 0
         self._audio_done = 0
@@ -122,7 +123,7 @@ class Data:
     @bvid.setter
     def bvid(self, bvid: str):
         self._bvid = bvid
-        self.parent.download_btn.setText(f'下载 {bvid} p{self.pid + 1}' if bvid else '下载')
+        self.parent.download_btn.setText(f'下载 {bvid} p{self.pid + 1}' if bvid else '下载视频')
 
     @property
     def pid(self) -> int:
@@ -155,6 +156,14 @@ class Data:
     @is_multi.setter
     def is_multi(self, is_multi: bool):
         self._is_multi = is_multi
+
+    @property
+    def cover_url(self) -> str:
+        return self._cover_url
+
+    @cover_url.setter
+    def cover_url(self, cover_url: str):
+        self._cover_url = cover_url
 
     @property
     def owner(self) -> str:
@@ -224,6 +233,23 @@ class Data:
     def remove_banned_chars(s: str) -> str:
         li = [c for c in s if c not in Data.banned_chars]
         return ''.join(li)
+
+    def get_save_dir(self) -> str:
+        """返回视频/封面等应该保存的目录路径"""
+        if not self.bvid or not self.owner or not self.title:
+            raise ValueError('请先获取视频信息！')
+        return f'downloads/{self.remove_banned_chars(self.owner)}/{self.bvid} - {self.remove_banned_chars(self.grand_title)}'
+    
+    def get_video_path(self) -> str:
+        """返回最终视频文件的完整保存路径"""
+        dir = self.get_save_dir()
+        if self.is_multi:
+            return f'./{dir}/P{self.pid + 1} {self.remove_banned_chars(self.sub_title)}.mp4'
+        return f'./{dir}/{self.remove_banned_chars(self.grand_title)}.mp4'
+    
+    def get_cover_path(self) -> str:
+        """返回封面图片的完整保存路径"""
+        return f'./{self.get_save_dir()}/cover.jpg'
 
 
 class GetInfoThread(QThread):
@@ -363,6 +389,37 @@ class MixThread(QThread):
         asyncio.get_event_loop().run_until_complete(self._main())
 
 
+class DownloadCoverThread(QThread):
+    downloaded = Signal()
+    error_msg = Signal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.url = ''
+        self.path = ''
+
+    async def download_cover(self):
+        async with aiohttp.ClientSession() as sess:
+            async with sess.get(self.url, proxy=args.proxy) as resp:
+                data = await resp.read()
+                with open(self.path, 'wb') as f:
+                    f.write(data)
+
+    async def _main(self):
+        try:
+            await self.download_cover()
+            self.downloaded.emit()
+        except Exception as e:
+            self.error_msg.emit(repr(e))
+
+    def run(self):
+        try:
+            asyncio.get_event_loop()
+        except RuntimeError:
+            asyncio.set_event_loop(asyncio.new_event_loop())
+        asyncio.get_event_loop().run_until_complete(self._main())
+
+
 class SettingWindow(QWidget):
     def __init__(self, main: 'Window'):
         super().__init__()
@@ -419,6 +476,10 @@ class Window(QWidget):
         self.owner_label = QLabel()
         self.owner_label.setWordWrap(True)
         self.setting_window = SettingWindow(self)
+        self.cover_btn = QPushButton('下载封面')
+        self.cover_btn.setFixedWidth(150)
+        self.cover_btn.setEnabled(False)
+        self.cover_btn.clicked.connect(self.download_cover)
         self.download_btn = QPushButton()
         self.download_btn.setEnabled(False)
         self.download_btn.clicked.connect(self.download_btn_handler)
@@ -458,12 +519,18 @@ class Window(QWidget):
         self.mix_thread = MixThread()
         self.mix_thread.msg.connect(lambda msg: self.log_text.append(msg))
         self.mix_thread.end.connect(lambda: self.mix_btn.setEnabled(True))
+        self.download_cover_thread = DownloadCoverThread()
+        self.download_cover_thread.downloaded.connect(self.cover_downloaded_handler)
+        self.download_cover_thread.error_msg.connect(lambda msg: QMessageBox.warning(self, '下载封面失败！', msg))
 
         layout = QVBoxLayout()
         for widget in [self.bvid_edit, self.title_label, self.owner_label]:
             layout.addWidget(widget)
-        layout.addWidget(self.download_btn)
-        for widgets in [[self.video_bar, self.setting_btn], [self.audio_bar, self.mix_btn]]:
+        for widgets in [
+            [self.cover_btn, self.download_btn],
+            [self.video_bar, self.setting_btn],
+            [self.audio_bar, self.mix_btn]
+        ]:
             hbox = QHBoxLayout()
             for widget in widgets:
                 hbox.addWidget(widget)
@@ -508,12 +575,15 @@ class Window(QWidget):
             self.data.is_multi = len(info['pages']) > 1
             self.data.grand_title = info['title']
             self.data.sub_title = info['pages'][self.data.pid]['part']
+            self.data.cover_url = info['pic']
             if self.data.is_multi:
                 self.data.title = f'{self.data.grand_title} - p{self.data.pid + 1} {self.data.sub_title}'
             else:
                 self.data.title = self.data.grand_title  # 单P视频的大小标题是一样的
             self.data.bvid = self.video.get_bvid()
-            self.download_btn.setEnabled(True)  # 若成功才能允许下载
+            # 若成功才能允许下载
+            self.download_btn.setEnabled(True)
+            self.cover_btn.setEnabled(True)
         self.bvid_edit.setEnabled(True)
 
     def download_btn_handler(self):
@@ -523,6 +593,10 @@ class Window(QWidget):
 
     def downloaded_handler(self):
         self.download_btn.setEnabled(True)
+
+    def cover_downloaded_handler(self):
+        self.cover_btn.setEnabled(True)
+        self.log_text.append('封面下载完成！')
 
     def set_video_done(self, done: int):
         self.data.video_done = done
@@ -537,24 +611,43 @@ class Window(QWidget):
         self.data.audio_all = all
 
     def mix(self):
-        if not self.data.bvid or not self.data.owner or not self.data.title:
-            QMessageBox.warning(self, '错误！', '你不先根据BV号查一下视频信息的话，可没法确定下载的文件名哦~')
+        try:
+            path = self.data.get_video_path()
+        except ValueError as e:
+            QMessageBox.warning(self, '错误！', str(e))
             return
-        dir = f'downloads/{Data.remove_banned_chars(self.data.owner)}/{self.data.bvid} - {Data.remove_banned_chars(self.data.grand_title)}'
-        if not os.path.exists(dir):
-            os.makedirs(dir)
-        if self.data.is_multi:
-            path = f'./{dir}/P{self.data.pid + 1} {Data.remove_banned_chars(self.data.sub_title)}.mp4'
-        else:
-            path = f'./{dir}/{Data.remove_banned_chars(self.data.grand_title)}.mp4'
+            
         if os.path.exists(path):
             self.log_text.append(f'目标文件已存在，安全起见，请先自行检查这个路径，确认是否需要重新混流，并删除原文件：{os.path.abspath(path)}')
             return
 
+        # 确保目录存在
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         self.mix_thread.path = path
         self.mix_thread.cmd = f'ffmpeg -i video_temp.m4s -i audio_temp.m4s -vcodec copy -acodec copy "{path}"'
         self.mix_btn.setEnabled(False)
         self.mix_thread.start()
+
+    def download_cover(self):
+        try:
+            path = self.data.get_cover_path()
+        except ValueError as e:
+            QMessageBox.warning(self, '错误！', str(e))
+            return
+            
+        if os.path.exists(path):
+            reply = QMessageBox.question(self, '文件已存在', '封面文件已存在，是否覆盖？',
+                                      QMessageBox.Yes | QMessageBox.No)
+            if reply == QMessageBox.No:
+                return
+
+        # 确保目录存在
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        self.cover_btn.setEnabled(False)
+        self.download_cover_thread.url = self.data.cover_url
+        self.download_cover_thread.path = path
+        self.download_cover_thread.start()
+        self.log_text.append(f'开始下载封面到：{os.path.abspath(path)}')
 
 
 if __name__ == '__main__':
